@@ -1,7 +1,9 @@
 package gorm
 
 import (
+	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -65,7 +67,27 @@ func createCallback(scope *Scope) {
 						scope.InstanceSet("gorm:blank_columns_with_default_value", blankColumnsWithDefaultValue)
 					} else if !field.IsPrimaryKey || !field.IsBlank {
 						columns = append(columns, scope.Quote(field.DBName))
-						placeholders = append(placeholders, scope.AddToVars(field.Field.Interface()))
+						if sep, ok := field.TagSettings["JOINER"]; ok {
+							if field.Field.Kind() == reflect.Slice || field.Field.Kind() == reflect.Array {
+								if sep == "JOINER" || sep == "" {
+									sep = ";"
+								}
+
+								var value string
+								for i := 0; i < field.Field.Len(); i++ {
+									value += fmt.Sprintf("%v", field.Field.Index(i))
+									if i != field.Field.Len()-1 {
+										value += sep
+									}
+								}
+
+								placeholders = append(placeholders, scope.AddToVars(value))
+							} else {
+								scope.Err(errors.New("joiner tag is defined on a non-slice or array object"))
+							}
+						} else {
+							placeholders = append(placeholders, scope.AddToVars(field.Field.Interface()))
+						}
 					}
 				} else if field.Relationship != nil && field.Relationship.Kind == "belongs_to" {
 					for _, foreignKey := range field.Relationship.ForeignDBNames {
